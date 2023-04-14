@@ -12,6 +12,10 @@ class InvalidReferenceException(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
 
+class InvalidAttributeException(Exception):
+    def __init__(self, msg: str):
+        super().__init__(msg)
+
 
 class Unit:
     def __init__(self, block, attributes, repeat):
@@ -113,13 +117,24 @@ class Analyzer(IOParserVisitor):
         return Ident(ident), [ident]
 
     def visitAttributes(self, ctx: IOParser.AttributesContext) -> list[Attribute]:
-        return [self.visitAttribute(attribute_ctx) for attribute_ctx in ctx.attribute()]
+        attributes = [self.visitAttribute(attribute_ctx) for attribute_ctx in ctx.attribute()]
+        specified = set()
+        for att in attributes:
+            if att.property in specified:
+                raise InvalidAttributeException(f'Property "{att.property}" specified multiple times.')
+            specified.add(att.property)
+        return attributes
 
     def visitAttribute(self, ctx: IOParser.AttributeContext) -> Attribute:
+        property = None
         options = {}
-        name = None
         if ctx.SORTED():
-            name = 'sorted'
+            property = 'sorted'
+            for opt in ['asc', 'desc', 'strict']:
+                if len(eval(f'ctx.{opt.upper()}()')) > 1:
+                    raise InvalidAttributeException(f'Option "{opt}" of property "sorted" can be declared at most once.')
+            if ctx.ASC(0) and ctx.DESC(0):
+                raise InvalidAttributeException('Cannot have have both "asc" and "desc" options for attribyte "sorted".')
             if ctx.ASC(0):
                 options['asc'] = True
             elif ctx.DESC(0):
@@ -127,32 +142,33 @@ class Analyzer(IOParserVisitor):
             if ctx.STRICT(0):
                 options['strict'] = True
         elif ctx.DISTINCT():
-            name = 'distinct'
-        elif ctx.GRAPH() or ctx.TREE():
-            name = 'graph' if ctx.GRAPH() else 'tree'
-            if ctx.NODES(0) or ctx.EDGES(0):
-                exit(1)
+            property = 'distinct'
+        elif ctx.GRAPH():
+            property = 'graph'
+            for opt in ['nodes', 'edges']:
+                if len(eval(f'ctx.{opt.upper()}()')) != 1:
+                    raise InvalidAttributeException(f'Option "{opt}" of property "{property}" must be declared exactly once.')
             options['nodes'] = self.visitInterval(ctx.interval(0))
-            options['edges'] = self.visitEdges(ctx.edge(0))
-            if ctx.CONNECTED(0):
-                options['connected'] = True
-            if ctx.LINE(0):
-                options['line'] = True
-            if ctx.BIPARTITE(0):
-                options['bipartite'] = True
+            options['edges'] = self.visitEdge(ctx.edge(0))
+            for opt in ['connected', 'tree', 'line', 'bipartite', 'dag']:
+                occurrences = eval(f'ctx.{opt.upper()}()')
+                if len(occurrences) > 1:
+                    raise InvalidAttributeException(f'Option "{opt}" of property "{property}" can be declared at most onece.')
+                if len(occurrences) == 1:
+                    options[opt] = True
             if ctx.DAG(0):
-                options['dag'] = True
+                if not options['edges'].directed:
+                    raise InvalidAttributeException('If "dag" is specified, edges must be directed.')
         elif ctx.comparison():
-            name = 'comparison'
+            property = 'comparison'
             options['constraint'] = self.visitComparison(ctx.comparison())
-        return name, options
+        return Attribute(property, options)
 
     def visitEdge(self, ctx: IOParser.EdgeContext) -> Edge:
-        directed = (ctx.ARROW() is not None)
         return Edge(
-            directed,
-            self.visitArithExpr(ctx.reference(0)),
-            self.visitArithExpr(ctx.reference(1))
+            bool(ctx.ARROW()),
+            self.visitReference(ctx.reference(0)),
+            self.visitReference(ctx.reference(1))
         )
 
     def visitComparison(self, ctx: IOParser.ComparisonContext) -> Comparison:
@@ -209,14 +225,3 @@ class Analyzer(IOParserVisitor):
         if ctx.INT():
             return IntLiteral(int(ctx.INT().getText()))
         return StringLiteral(ctx.STR().getText())
-
-
-input = open('../grammar/sample.ip', 'r')
-lexer = IOLexer(InputStream(input.read()))
-parser = IOParser(CommonTokenStream(lexer))
-
-ctx = parser.sequence()
-
-analyzer = Analyzer()
-sequence, variables = analyzer.visitSequence(ctx)
-print(variables)
