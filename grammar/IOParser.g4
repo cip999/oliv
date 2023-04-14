@@ -19,7 +19,7 @@ attributes : attribute ( COMMA attribute )* ;
 attribute
     : SORTED ( LPAREN ( ASC | DESC | STRICT )+ RPAREN )?
     | DISTINCT
-    | ( GRAPH | TREE ) LPAREN ( NODES ASSIGN interval | EDGES ASSIGN edge | CONNECTED | LINE | BIPARTITE | DAG )+ RPAREN
+    | GRAPH LPAREN ( NODES ASSIGN interval | EDGES ASSIGN edge | CONNECTED | TREE | LINE | BIPARTITE | DAG )+ RPAREN
     | comparison
     ;
 
