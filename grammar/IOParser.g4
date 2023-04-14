@@ -7,7 +7,7 @@ sequence : unit ( unit )* ;
 unit
     : NL
     | literal
-    | block ( COLUMN LBRACE attributes RBRACE )? ( UNDERSCORE repeat )?
+    | block ( UNDERSCORE repeat )? ( COLUMN LBRACE attributes RBRACE )?
     ;
 
 block
