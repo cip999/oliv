@@ -23,7 +23,7 @@ attribute
     | comparison
     ;
 
-edge : reference ( MINUS | ARROW ) reference ;
+edge : reference ( MINUS MINUS | ARROW ) reference ;
 
 comparison : COMP_OP arithExpr ;
 

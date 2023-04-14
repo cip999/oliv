@@ -16,7 +16,6 @@ class InvalidAttributeException(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
 
-
 class Unit:
     def __init__(self, block, attributes, repeat):
         self.block = block
@@ -30,15 +29,15 @@ class Block:
     def __init__(self, units: list[Unit]):
         self.units = units
 
+class ArithExpr:
+    def __init__(self, op: str, lhs, rhs):
+        self.op = op
+        self.lhs, self.rhs = lhs, rhs
+
 class Attribute:
-    def __init__(self, property: str, options):
+    def __init__(self, property: str, options: map):
         self.property = property
         self.options = options
-
-class Edge:
-    def __init__(self, directed: bool, a, b):
-        self.directed = directed
-        self.a, self.b = a, b
 
 class Comparison:
     def __init__(self, op: str, term):
@@ -46,44 +45,40 @@ class Comparison:
         self.term = term
 
 class Interval:
-    def __init__(self, a, b):
+    def __init__(self, a: ArithExpr, b: ArithExpr):
         self.a, self.b = a, b
-
-class ArithExpr:
-    def __init__(self, op: str, lhs, rhs):
-        self.op = op
-        self.lhs = lhs
-        self.rhs = rhs
-
-class Reference(ArithExpr):
-    def __init__(self, ident, subs: list[ArithExpr]):
-        self.ident = ident
-        self.subs = subs
-
-class Edge:
-    def __init__(self, directed: bool, a: Reference, b: Reference):
-        self.directed = directed
-        self.a = a
-        self.b = b
 
 class Ident(Block):
     def __init__(self, name: str):
         self.name = name
 
-class Literal(Unit): pass
+class Reference(ArithExpr):
+    def __init__(self, ident: Ident, subs: list[ArithExpr]):
+        self.ident = ident
+        self.subs = subs
+
+class Edge:
+    def __init__(self, directed: bool, u: Reference, v: Reference):
+        self.directed = directed
+        self.u, self.v = u, v
+
+class Literal(Unit):
+    def __init__(self, val):
+        self.val = val
 
 class IntLiteral(Literal, ArithExpr):
     def __init__(self, val: int):
-        self.val = val
+        super().__init__(val)
 
 class StringLiteral(Literal):
     def __init__(self, val: str):
-        self.val = val
+        super().__init__(val)
 
 
 class Analyzer(IOParserVisitor):
-    def __init__(self):
+    def __init__(self, special_identifier='i'):
         self.state = {}
+        self.sid = special_identifier
 
     def visitSequence(self, ctx: IOParser.SequenceContext) -> tuple[list[Unit], list[str]]:
         units = []
@@ -105,6 +100,12 @@ class Analyzer(IOParserVisitor):
         if repeat:
             for v in variables:
                 self.state[v] += 1
+        for attribute in attributes:
+            if attribute.property == 'graph':
+                edge = attribute.options['edges']
+                for endpoint in [edge.u, edge.v]:
+                    if len(endpoint.subs) == 1 and (endpoint.ident.name not in self.state or self.state[endpoint.ident.name] != 1):
+                        raise InvalidReferenceException(f'Invalid edge endpoint: identifier {endpoint.ident.name} not in scope or with depth > 1.')
         return Unit(block, attributes, repeat), variables
 
     def visitBlock(self, ctx: IOParser.BlockContext) -> tuple[Block, list[str]]:
@@ -165,11 +166,32 @@ class Analyzer(IOParserVisitor):
         return Attribute(property, options)
 
     def visitEdge(self, ctx: IOParser.EdgeContext) -> Edge:
-        return Edge(
-            bool(ctx.ARROW()),
-            self.visitReference(ctx.reference(0)),
-            self.visitReference(ctx.reference(1))
-        )
+        endpoints = []
+        for i in range(2):
+            reference_ctx = ctx.reference(i)
+            ident = reference_ctx.IDENT().getText()
+            if ident == self.sid:
+                if self.sid in self.state:
+                    raise InvalidReferenceException(f'Referenced special identifier "{self.sid}" when it had already been declared.')
+                if reference_ctx.arithExpr(0):
+                    raise InvalidReferenceException(f'Special identifier "{self.sid}" cannot have subscripts.')
+                reference = Reference(Ident(ident), [])
+            else:
+                sid_state = -1
+                if self.sid in self.state:
+                    sid_state = self.state[self.sid]
+                    del self.state[self.sid]
+                else:
+                    self.state[self.sid] = 0
+                reference = Reference(Ident(ident), [self.visitArithExpr(sub_ctx) for sub_ctx in reference_ctx.arithExpr()])
+                if len(reference.subs) != 1:
+                    raise InvalidReferenceException(f'Invalid edge endpoint "{reference_ctx.getText()}": must have exactly one subscript.')
+                if sid_state == -1:
+                    del self.state[self.sid]
+                else:
+                    self.state[self.sid] = sid_state
+            endpoints.append(reference)
+        return Edge(bool(ctx.ARROW()), *endpoints)
 
     def visitComparison(self, ctx: IOParser.ComparisonContext) -> Comparison:
         return Comparison(ctx.COMP_OP().getText(), self.visitArithExpr(ctx.arithExpr()))
@@ -215,13 +237,23 @@ class Analyzer(IOParserVisitor):
     def visitReference(self, ctx: IOParser.ReferenceContext) -> Reference:
         ident = ctx.IDENT().getText()
         if ident not in self.state:
-            raise InvalidReferenceException(f'Identifier "{ident}" not in scope.')
-        subs = [self.visitArithExpr(subCtx) for subCtx in ctx.arithExpr()]
+            raise InvalidReferenceException(f'Identifier "{ident}" not in scope for reference "{ctx.getText()}".')
+        subs = [self.visitArithExpr(sub_ctx) for sub_ctx in ctx.arithExpr()]
         if self.state[ident] != len(subs):
-            raise InvalidReferenceException(f'Number of subscripts ({len(subs)}) of identifier "{ident}" does not match the expected one ({self.state[ident]}).')
+            raise InvalidReferenceException(f'Number of subscripts ({len(subs)}) in reference "{ctx.getText()}" does not match the expected one ({self.state[ident]}).')
         return Reference(Ident(ident), subs)
 
     def visitLiteral(self, ctx: IOParser.LiteralContext) -> Literal:
         if ctx.INT():
             return IntLiteral(int(ctx.INT().getText()))
         return StringLiteral(ctx.STR().getText())
+
+input = open('../grammar/sample.ip', 'r')
+lexer = IOLexer(InputStream(input.read()))
+parser = IOParser(CommonTokenStream(lexer))
+
+ctx = parser.sequence()
+
+analyzer = Analyzer()
+sequence, variables = analyzer.visitSequence(ctx)
+print(variables)
