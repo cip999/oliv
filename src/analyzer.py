@@ -280,7 +280,9 @@ class Analyzer(IOParserVisitor):
             raise InvalidReferenceException(f'Identifier "{ident}" not in scope for reference "{ctx.getText()}".')
         subs = [self.visitArithExpr(sub_ctx) for sub_ctx in ctx.arithExpr()]
         if self.state[ident] != len(subs):
-            raise InvalidReferenceException(f'Number of subscripts ({len(subs)}) in reference "{ctx.getText()}" does not match the expected one ({self.state[ident]}).')
+            raise InvalidReferenceException(
+                f'Number of subscripts ({len(subs)}) in reference "{ctx.getText()}" does not match the expected one ({self.state[ident]}).'
+            )
         return Reference(Ident(ident), subs)
 
     def visitLiteral(self, ctx: IOParser.LiteralContext) -> Literal:
