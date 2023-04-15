@@ -34,6 +34,12 @@ class ArithExpr:
     def __init__(self, op: str, lhs, rhs):
         self.op = op
         self.lhs, self.rhs = lhs, rhs
+    def evaluate(self) -> int | str:
+        x, y = self.lhs.evaluate(), self.rhs.evaluate()
+        expr = f'({x}) {self.op} ({y})'
+        if isinstance(x, int) and isinstance(y, int):
+            return int(eval(expr))
+        return expr
 
 class Comparison:
     def __init__(self, op: str, term: ArithExpr):
@@ -54,7 +60,7 @@ class NL(Unit):
     def __init__(self): pass
 
 class Ident(Block):
-    def __init__(self, name: str, type: str | None):
+    def __init__(self, name: str, type: str | None = None):
         self.name = name
         self.type = type or 'int'
     def is_single_ident(self) -> bool:
@@ -64,6 +70,11 @@ class Reference(ArithExpr):
     def __init__(self, ident: Ident, subs: list[ArithExpr]):
         self.ident = ident
         self.subs = subs
+    def evaluate(self) -> str:
+        result = self.ident.name
+        if len(self.subs) > 0:
+            result += '[' + ']['.join(str(sub.evaluate()) for sub in self.subs) + ']'
+        return result
 
 class Edge:
     def __init__(self, directed: bool, u: Reference, v: Reference):
@@ -77,6 +88,8 @@ class Literal(Unit):
 class IntLiteral(Literal, ArithExpr):
     def __init__(self, val: int):
         super().__init__(val)
+    def evaluate(self) -> int:
+        return self.val
 
 class FloatLiteral(Literal):
     def __init__(self, val: float):
@@ -127,17 +140,19 @@ class Analyzer(IOParserVisitor):
         if ctx.IDENT() is None:
             units, variables = self.visitSequence(ctx.sequence())
             return Block(units), variables
-        ident = ctx.IDENT().getText()
+        ident, type = ctx.IDENT().getText(), None
+        if ctx.TYPE():
+            type = ctx.TYPE().getText()
         if ident in self.state:
             raise RepeatedIdentifierException(f'Identifier "{ident}" defined multiple times.')
         self.state[ident] = 0
-        return Ident(ident), [ident]
+        return Ident(ident, type), [ident]
 
     def visitAttributes(self, ctx: IOParser.AttributesContext) -> list[Attribute]:
         attributes = [self.visitAttribute(attribute_ctx) for attribute_ctx in ctx.attribute()]
         specified = set()
         for att in attributes:
-            if att.property in specified:
+            if att.property != 'comparison' and att.property in specified:
                 raise InvalidAttributeException(f'Property "{att.property}" specified multiple times.')
             specified.add(att.property)
         return attributes
@@ -178,7 +193,9 @@ class Analyzer(IOParserVisitor):
                     raise InvalidAttributeException('If "dag" is specified, edges must be directed.')
         elif ctx.comparison():
             property = 'comparison'
-            options['constraint'] = self.visitComparison(ctx.comparison())
+            if property not in options:
+                options[property] = []
+            options[property].append(self.visitComparison(ctx.comparison()))
         return Attribute(property, options)
 
     def visitEdge(self, ctx: IOParser.EdgeContext) -> Edge:
@@ -265,13 +282,3 @@ class Analyzer(IOParserVisitor):
         if ctx.FLOAT():
             return FloatLiteral(float(ctx.FLOAT().getText()))
         return StringLiteral(ctx.STR().getText())
-
-input = open('../grammar/sample.ip', 'r')
-lexer = IOLexer(InputStream(input.read()))
-parser = IOParser(CommonTokenStream(lexer))
-
-ctx = parser.sequence()
-
-analyzer = Analyzer()
-sequence, variables = analyzer.visitSequence(ctx)
-print(variables)
