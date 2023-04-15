@@ -1,6 +1,6 @@
 lexer grammar IOLexer;
 
-TYPE : 'int' | 'float' | 'string' ;
+TYPE : 'int' | 'float' | 'double' | 'string' ;
 
 SORTED : 'sorted' ;
 ASC : 'asc' ;
