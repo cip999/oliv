@@ -28,6 +28,8 @@ class NL(Unit):
 class Block:
     def __init__(self, units: list[Unit]):
         self.units = units
+    def is_single_ident(self) -> bool:
+        return len(self.units) == 1 and not self.units[0].repeat and self.units[0].block.is_single_ident()
 
 class ArithExpr:
     def __init__(self, op: str, lhs, rhs):
@@ -51,6 +53,8 @@ class Interval:
 class Ident(Block):
     def __init__(self, name: str):
         self.name = name
+    def is_single_ident(self) -> bool:
+        return True
 
 class Reference(ArithExpr):
     def __init__(self, ident: Ident, subs: list[ArithExpr]):
@@ -72,7 +76,7 @@ class IntLiteral(Literal, ArithExpr):
 
 class StringLiteral(Literal):
     def __init__(self, val: str):
-        super().__init__(val)
+        super().__init__(val.strip('"'))
 
 
 class Analyzer(IOParserVisitor):
@@ -101,6 +105,9 @@ class Analyzer(IOParserVisitor):
             for v in variables:
                 self.state[v] += 1
         for attribute in attributes:
+            if attribute.property == 'sorted' or attribute.property == 'distinct':
+                if not (repeat and block.is_single_ident()):
+                    raise InvalidAttributeException(f'Property "{attribute.property}" is only applicable to a single repeated identifier.')
             if attribute.property == 'graph':
                 edge = attribute.options['edges']
                 for endpoint in [edge.u, edge.v]:
@@ -110,7 +117,8 @@ class Analyzer(IOParserVisitor):
 
     def visitBlock(self, ctx: IOParser.BlockContext) -> tuple[Block, list[str]]:
         if ctx.IDENT() is None:
-            return self.visitSequence(ctx.sequence())
+            units, variables = self.visitSequence(ctx.sequence())
+            return Block(units), variables
         ident = ctx.IDENT().getText()
         if ident in self.state:
             raise RepeatedIdentifierException(f'Identifier "{ident}" defined multiple times.')
