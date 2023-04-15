@@ -127,8 +127,15 @@ class Analyzer(IOParserVisitor):
                 self.state[v] += 1
         for attribute in attributes:
             if attribute.property == 'sorted' or attribute.property == 'distinct':
-                if not (repeat and block.is_single_ident()):
-                    raise InvalidAttributeException(f'Property "{attribute.property}" is only applicable to a single repeated identifier.')
+                okay = repeat and block.is_single_ident()
+                if not isinstance(block, Ident):
+                    units = [u for u in block.units if not isinstance(u, NL)]
+                    if len([u for u in units if isinstance(u, Literal) or not u.block.is_single_ident()]) == 0:
+                        okay = True
+                if not okay:
+                    raise InvalidAttributeException(
+                        f'Property "{attribute.property}" is only applicable to a single repeated identifier or to a simple list of identifiers.'
+                    )
             if attribute.property == 'graph':
                 edge = attribute.options['edges']
                 for endpoint in [edge.u, edge.v]:
