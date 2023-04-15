@@ -11,7 +11,7 @@ unit
     ;
 
 block
-    : IDENT
+    : IDENT ( LT TYPE GT )?
     | LBRACE sequence RBRACE
     ;
 
@@ -25,7 +25,7 @@ attribute
 
 edge : reference ( MINUS MINUS | ARROW ) reference ;
 
-comparison : COMP_OP arithExpr ;
+comparison : compOp arithExpr ;
 
 repeat : LBRACE ( arithExpr | interval ) RBRACE ;
 interval : arithExpr DOTS arithExpr ;
@@ -50,5 +50,20 @@ reference : IDENT ( LBRACK arithExpr RBRACK )* ;
 
 literal
     : INT
+    | FLOAT
     | STR
+    ;
+
+boolBinOp
+    : AND
+    | OR
+    ;
+
+compOp
+    : EQ
+    | NOT_EQ
+    | LT
+    | LTE
+    | GT
+    | GTE
     ;

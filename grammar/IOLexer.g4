@@ -1,5 +1,7 @@
 lexer grammar IOLexer;
 
+TYPE : 'int' | 'float' | 'string' ;
+
 SORTED : 'sorted' ;
 ASC : 'asc' ;
 DESC : 'desc' ;
@@ -19,26 +21,12 @@ IDENT : [a-zA-Z][a-zA-Z0-9]* ;
 
 ARROW : '->' ;
 
-// Boolean binary operators.
-BOOL_BIN_OP
-    : AND
-    | OR
-    ;
-
+// Boolean operators.
 NOT : '~' ;
 AND : '&' ;
 OR : '|' ;
 
 // Comparison operators.
-COMP_OP
-    : EQ
-    | NOT_EQ
-    | LT
-    | LTE
-    | GT
-    | GTE
-    ;
-
 EQ : '==' ;
 NOT_EQ : '!=' ;
 LT : '<' ;
@@ -54,6 +42,8 @@ DIV : '/' ;
 MOD : '%' ;
 
 ASSIGN : '=' ;
+
+FLOAT : INT '.' ( '0'..'9' )+ ;
 
 // Integer literal (no leading zeros).
 INT : '-'? ( '0' | '1'..'9' ( '0'..'9' )* ) ;

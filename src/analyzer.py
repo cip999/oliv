@@ -16,14 +16,8 @@ class InvalidAttributeException(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
 
-class Unit:
-    def __init__(self, block, attributes, repeat):
-        self.block = block
-        self.attributes = attributes
-        self.repeat = repeat
 
-class NL(Unit):
-    def __init__(self): pass
+class Unit: pass
 
 class Block:
     def __init__(self, units: list[Unit]):
@@ -31,18 +25,18 @@ class Block:
     def is_single_ident(self) -> bool:
         return len(self.units) == 1 and not self.units[0].repeat and self.units[0].block.is_single_ident()
 
-class ArithExpr:
-    def __init__(self, op: str, lhs, rhs):
-        self.op = op
-        self.lhs, self.rhs = lhs, rhs
-
 class Attribute:
     def __init__(self, property: str, options: map):
         self.property = property
         self.options = options
 
+class ArithExpr:
+    def __init__(self, op: str, lhs, rhs):
+        self.op = op
+        self.lhs, self.rhs = lhs, rhs
+
 class Comparison:
-    def __init__(self, op: str, term):
+    def __init__(self, op: str, term: ArithExpr):
         self.op = op
         self.term = term
 
@@ -50,9 +44,19 @@ class Interval:
     def __init__(self, a: ArithExpr, b: ArithExpr):
         self.a, self.b = a, b
 
+class Unit:
+    def __init__(self, block: Block, attributes: list[Attribute], repeat: Interval | None):
+        self.block = block
+        self.attributes = attributes
+        self.repeat = repeat
+
+class NL(Unit):
+    def __init__(self): pass
+
 class Ident(Block):
-    def __init__(self, name: str):
+    def __init__(self, name: str, type: str | None):
         self.name = name
+        self.type = type or 'int'
     def is_single_ident(self) -> bool:
         return True
 
@@ -72,6 +76,10 @@ class Literal(Unit):
 
 class IntLiteral(Literal, ArithExpr):
     def __init__(self, val: int):
+        super().__init__(val)
+
+class FloatLiteral(Literal):
+    def __init__(self, val: float):
         super().__init__(val)
 
 class StringLiteral(Literal):
@@ -202,7 +210,7 @@ class Analyzer(IOParserVisitor):
         return Edge(bool(ctx.ARROW()), *endpoints)
 
     def visitComparison(self, ctx: IOParser.ComparisonContext) -> Comparison:
-        return Comparison(ctx.COMP_OP().getText(), self.visitArithExpr(ctx.arithExpr()))
+        return Comparison(ctx.compOp().getText(), self.visitArithExpr(ctx.arithExpr()))
 
     def visitRepeat(self, ctx: IOParser.RepeatContext) -> Interval:
         if ctx.interval():
@@ -254,6 +262,8 @@ class Analyzer(IOParserVisitor):
     def visitLiteral(self, ctx: IOParser.LiteralContext) -> Literal:
         if ctx.INT():
             return IntLiteral(int(ctx.INT().getText()))
+        if ctx.FLOAT():
+            return FloatLiteral(float(ctx.FLOAT().getText()))
         return StringLiteral(ctx.STR().getText())
 
 input = open('../grammar/sample.ip', 'r')
